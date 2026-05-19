@@ -92,9 +92,9 @@ resource "google_project_iam_member" "agent_deployer_aiplatform_user" {
 }
 
 # The deployer also needs to write staging artefacts to GCS.
-resource "google_project_iam_member" "agent_deployer_storage_object_admin" {
+resource "google_project_iam_member" "agent_deployer_storage_admin" {
   project = var.project_id
-  role    = "roles/storage.objectAdmin"
+  role    = "roles/storage.admin"
   member  = "serviceAccount:${google_service_account.agent_deployer.email}"
 }
 
