@@ -45,6 +45,27 @@ resource "google_project_service" "iamcredentials" {
   disable_dependent_services = false
 }
 
+resource "google_project_service" "iam" {
+  project                    = var.project_id
+  service                    = "iam.googleapis.com"
+  disable_on_destroy         = false
+  disable_dependent_services = false
+}
+
+resource "google_project_service" "serviceusage" {
+  project                    = var.project_id
+  service                    = "serviceusage.googleapis.com"
+  disable_on_destroy         = false
+  disable_dependent_services = false
+}
+
+resource "google_project_service" "cloudresourcemanager" {
+  project                    = var.project_id
+  service                    = "cloudresourcemanager.googleapis.com"
+  disable_on_destroy         = false
+  disable_dependent_services = false
+}
+
 # Storage API is needed for the Agent Engine staging bucket.
 resource "google_project_service" "storage" {
   project                    = var.project_id
@@ -74,6 +95,24 @@ resource "google_project_iam_member" "agent_deployer_aiplatform_user" {
 resource "google_project_iam_member" "agent_deployer_storage_object_admin" {
   project = var.project_id
   role    = "roles/storage.objectAdmin"
+  member  = "serviceAccount:${google_service_account.agent_deployer.email}"
+}
+
+resource "google_project_iam_member" "agent_deployer_serviceusage_admin" {
+  project = var.project_id
+  role    = "roles/serviceusage.serviceUsageAdmin"
+  member  = "serviceAccount:${google_service_account.agent_deployer.email}"
+}
+
+resource "google_project_iam_member" "agent_deployer_wif_pool_admin" {
+  project = var.project_id
+  role    = "roles/iam.workloadIdentityPoolAdmin"
+  member  = "serviceAccount:${google_service_account.agent_deployer.email}"
+}
+
+resource "google_project_iam_member" "agent_deployer_project_iam_admin" {
+  project = var.project_id
+  role    = "roles/resourcemanager.projectIamAdmin"
   member  = "serviceAccount:${google_service_account.agent_deployer.email}"
 }
 
