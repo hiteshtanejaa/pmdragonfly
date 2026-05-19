@@ -116,6 +116,12 @@ resource "google_project_iam_member" "agent_deployer_project_iam_admin" {
   member  = "serviceAccount:${google_service_account.agent_deployer.email}"
 }
 
+resource "google_project_iam_member" "agent_deployer_sa_admin" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountAdmin"
+  member  = "serviceAccount:${google_service_account.agent_deployer.email}"
+}
+
 # ---------------------------------------------------------------------------
 # Workload Identity Federation (optional but preferred over key files in CI)
 # ---------------------------------------------------------------------------
