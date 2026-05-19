@@ -37,6 +37,14 @@ resource "google_project_service" "aiplatform" {
   disable_dependent_services = false
 }
 
+# Required for Workload Identity Federation token exchange.
+resource "google_project_service" "iamcredentials" {
+  project                    = var.project_id
+  service                    = "iamcredentials.googleapis.com"
+  disable_on_destroy         = false
+  disable_dependent_services = false
+}
+
 # Storage API is needed for the Agent Engine staging bucket.
 resource "google_project_service" "storage" {
   project                    = var.project_id
