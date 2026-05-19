@@ -1,0 +1,123 @@
+###############################################################################
+# .github/workflows/deploy.yml
+#
+# 1. Runs Terraform to ensure GCP infrastructure is in place.
+# 2. Deploys the ADK hello-agent to Google Agent Engine.
+#
+# Required GitHub repository secrets / variables:
+#   Secrets:
+#     GCP_PROJECT_ID          – GCP project ID
+#     GCP_STAGING_BUCKET      – GCS bucket for Agent Engine staging artefacts
+#     TF_BACKEND_BUCKET       – GCS bucket that stores Terraform remote state
+#
+#   Variables (repository-level, not sensitive):
+#     GCP_REGION              – e.g. us-central1  (defaults to us-central1)
+#     GCP_WORKLOAD_IDENTITY_PROVIDER
+#                             – full WIF provider resource name output by Terraform
+#                               e.g. projects/123/locations/global/workloadIdentityPools/github-pool/providers/github-oidc
+#     GCP_SERVICE_ACCOUNT     – deployer SA email output by Terraform
+#                               e.g. agent-deployer@my-project.iam.gserviceaccount.com
+#     GITHUB_REPOSITORY_SLUG  – owner/repo  (same value as var.github_repository in Terraform)
+###############################################################################
+
+name: Terraform + Agent Deploy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Required for Workload Identity Federation token exchange.
+  id-token: write
+
+env:
+  GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+  TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
+  TF_VAR_github_repository: ${{ vars.GITHUB_REPOSITORY_SLUG }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1 – Terraform
+  # ---------------------------------------------------------------------------
+  terraform:
+    name: Terraform plan / apply
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.6"
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
+            -backend-config="prefix=adk-hello-agent/tfstate"
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        id: plan
+        run: terraform plan -out=tfplan -input=false
+
+      # Apply only on pushes to main (not on PRs)
+      - name: Terraform apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -input=false tfplan
+
+  # ---------------------------------------------------------------------------
+  # Job 2 – Deploy agent (runs after Terraform succeeds, main branch only)
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy ADK agent
+    runs-on: ubuntu-latest
+    needs: terraform
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r agent/requirements.txt
+
+      - name: Deploy agent to Agent Engine
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ env.GCP_REGION }}
+          GCP_STAGING_BUCKET: ${{ secrets.GCP_STAGING_BUCKET }}
+        run: python deploy.py
